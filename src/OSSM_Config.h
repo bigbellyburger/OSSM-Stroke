@@ -21,8 +21,8 @@ uint8_t Remote_Address[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 #define STEP_PER_REV      2000      // How many steps per revolution of the motor (S1 off, S2 on, S3 on, S4 off)
 #define PULLEY_TEETH      20        // How many teeth has the pulley
 #define BELT_PITCH        2         // What is the timing belt pitch in mm
-#define MAX_RPM           3000.0    // Maximum RPM of motor
-#define MAX_ACCELERATION  10000     // Maximum linear acceleration in mm/s²
+#define MAX_RPM           5000.0    // Maximum RPM of motor
+#define MAX_ACCELERATION  50000     // Maximum linear acceleration in mm/s²
 
 // This is in millimeters, and is what's used to define how much of
 // your rail is usable.
