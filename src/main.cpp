@@ -228,12 +228,14 @@ bool _send_message(m5_message_type message_type, unsigned short target, uint8_t 
   header->target = target;
   memcpy(&buffer[sizeof(m5_message_header_t)], data, len);
 
+#ifdef M5_MSG_DEBUG
   Serial.printf("Sent %i: ", sizeof(buffer));
   for (int i = 0; i < sizeof(buffer); i++)
   {
     Serial.printf("%02X", buffer[i]);
   }
   Serial.printf("\n");
+#endif
 
   for (int i = 0; i < 3; i++)
   {
@@ -275,13 +277,16 @@ void print_ossm_state(ossm_state_t *state) {
 bool send_state()
 {
   if(!is_homed) return false;
-  Serial.print("Sent state: ");
 
   ossm_broadcast_state_t msg;
   msg.maxspeed = USER_SPEEDLIMIT;
-  msg.maxdepth = strokingMachine.physicalTravel;
+  msg.maxdepth = (strokingMachine.physicalTravel - (2 * strokingMachine.keepoutBoundary));
   msg.state = ossm_state;
+
+#ifdef M5_MSG_DEBUG
+  Serial.print("Sent state: ");
   print_ossm_state(&msg.state);
+#endif
 
   return _send_message(OSSM_BROADCAST_STATE, 0, (uint8_t *)&msg, sizeof(msg));
 }
@@ -294,9 +299,9 @@ void homingNotification(bool isHomed)
     LogDebug("Found home - Ready to rumble!");
     g_ui.UpdateMessage("Homed - Ready to rumble!");
 
+    is_homed = true;
     update_state();
     send_state();
-    is_homed = true;
 
     // outgoingcontrol.esp_connected = true;
     // outgoingcontrol.esp_speed = USER_SPEEDLIMIT;
@@ -336,16 +341,22 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
 }
 
+bool float_equal(float a, float b)
+{
+  return fabs(a - b) < 0.01;
+}
 
 // Callback when data is received
 void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
 {
+#ifdef M5_MSG_DEBUG
   Serial.printf("Received %i: ", len);
   for (int i = 0; i < len; i++)
   {
     Serial.printf("%02X", *(incomingData + i));
   }
   Serial.printf("\n");
+#endif
 
   if (len < sizeof(m5_message_header_t))
   {
@@ -378,13 +389,17 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
   case M5_SET_OSSM_STATE:
   {
     update_state();
+#ifdef M5_MSG_DEBUG
     Serial.print("My state: ");
     print_ossm_state(&ossm_state);
+#endif
 
     m5_set_ossm_state_t *msg = (m5_set_ossm_state_t *)(incomingData + sizeof(m5_message_header_t));
     ossm_state_t *new_state = &msg->state;
+#ifdef M5_MSG_DEBUG
     Serial.print("New state: ");
     print_ossm_state(new_state);
+#endif
 
     if (new_state->on != ossm_state.on)
     {
@@ -398,25 +413,25 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len)
       }
     }
 
-    if (new_state->speed != ossm_state.speed)
+    if (!float_equal(new_state->speed, ossm_state.speed))
     {
       Serial.printf("Changing speed %.6f -> %.6f\n", ossm_state.speed, new_state->speed);
       Stroker.setSpeed(new_state->speed, true);
     }
 
-    if (new_state->depth != ossm_state.depth)
+    if (!float_equal(new_state->depth, ossm_state.depth))
     {
       Serial.printf("Changing depth %.6f -> %.6f\n", ossm_state.depth, new_state->depth);
       Stroker.setDepth(new_state->depth, true);
     }
 
-    if (new_state->stroke != ossm_state.stroke)
+    if (!float_equal(new_state->stroke, ossm_state.stroke))
     {
       Serial.printf("Changing stroke %.6f -> %.6f\n", ossm_state.stroke, new_state->stroke);
       Stroker.setStroke(new_state->stroke, true);
     }
 
-    if (new_state->sensation != ossm_state.sensation)
+    if (!float_equal(new_state->sensation, ossm_state.sensation))
     {
       Serial.printf("Changing sensation %.6f -> %.6f\n", ossm_state.sensation, new_state->sensation);
       Stroker.setSensation(new_state->sensation, true);
@@ -686,7 +701,7 @@ void emergencyStopTask(void *pvParameters)
     {
       unsigned long now = millis();
 
-      if (Stroker.getState() == PATTERN && (now - last_m5_heartbeat > (HEARTBEAT_INTERVAL * 3)))
+      if (Stroker.getState() == PATTERN && (now - last_m5_heartbeat > 1500))
       {
         LogDebug("M5 lost - Emergency stop!");
         Stroker.stopMotion();
